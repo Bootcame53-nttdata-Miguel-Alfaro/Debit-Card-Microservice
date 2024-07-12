@@ -1,0 +1,340 @@
+openapi: 3.0.0
+info:
+  title: Debit Card Microservice
+  description: Debit Card Management Microservice
+  version: 1.0.0
+servers:
+  - url: http://localhost:8085
+    description: Local server
+paths:
+  /debit-cards:
+    post:
+      tags:
+        - debit card
+      summary: Create a new debit card
+      description: Add a new debit card to the system
+      operationId: createDebitCard
+      requestBody:
+        description: Create a new debit card
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DebitCard'
+        required: true
+      responses:
+        "201":
+          description: Debit card created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebitCard'
+        "405":
+          description: Invalid input
+  /debit-cards/{cardId}/link-account/{accountId}:
+    put:
+      tags:
+        - debit card
+      summary: Link an account to a debit card
+      description: Link an existing account to a debit card
+      operationId: linkAccount
+      parameters:
+        - name: cardId
+          in: path
+          description: ID of the debit card to link the account to
+          required: true
+          schema:
+            type: string
+        - name: accountId
+          in: path
+          description: ID of the account to be linked
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Account linked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebitCard'
+        "404":
+          description: Debit card or account not found
+  /debit-cards/{cardId}/set-primary-account/{primaryAccountId}:
+    put:
+      tags:
+        - debit card
+      summary: Set primary account for a debit card
+      description: Set the primary account for an existing debit card
+      operationId: setPrimaryAccount
+      parameters:
+        - name: cardId
+          in: path
+          description: ID of the debit card to set the primary account for
+          required: true
+          schema:
+            type: string
+        - name: primaryAccountId
+          in: path
+          description: ID of the primary account to be set
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Primary account set successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebitCard'
+        "404":
+          description: Debit card not found
+  /debit-cards/balance/{cardId}:
+    get:
+      tags:
+        - debit card
+      summary: View the balance of the associated main account
+      description: View the balance of the associated main account
+      operationId: accountBalance
+      parameters:
+        - name: cardId
+          in: path
+          description: ID of the debit card
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Balance account set successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalance'
+        "404":
+          description: Debit card not found
+  /debit-cards/{id}:
+    get:
+      tags:
+        - debit card
+      summary: Get debit card by ID
+      description: Retrieve details of a debit card by its ID
+      operationId: getDebitCardById
+      parameters:
+        - name: id
+          in: path
+          description: ID of the debit card to retrieve
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Debit card retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebitCard'
+        "404":
+          description: Debit card not found
+    delete:
+      tags:
+        - debit card
+      summary: Delete a debit card
+      description: Remove a debit card from the system
+      operationId: deleteDebitCard
+      parameters:
+        - name: id
+          in: path
+          description: ID of the debit card to delete
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Debit card deleted successfully
+        "404":
+          description: Debit card not found
+  /debit-cards/{id}/deposit:
+    post:
+      tags:
+        - transaction
+      summary: Deposit to an debit card
+      description: Deposit money into an debit card
+      operationId: depositToDebitCard
+      parameters:
+        - name: id
+          in: path
+          description: ID of debit card to deposit to
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: Deposit details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionOperation'
+        required: true
+      responses:
+        "200":
+          description: Deposit successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+  /debit-cards/{id}/withdraw:
+    post:
+      tags:
+        - transaction
+      summary: Withdraw from an debit card
+      description: Withdraw money from an debit card
+      operationId: withdrawFromDebitCard
+      parameters:
+        - name: id
+          in: path
+          description: ID of debit card to withdraw from
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: Withdrawal details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionOperation'
+        required: true
+      responses:
+        "200":
+          description: Withdrawal successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionResponse'
+  /debit-cards/{id}/transactions:
+    get:
+      tags:
+        - transaction
+      summary: Get debit card transactions
+      description: Retrieve transactions of an debit card
+      operationId: getDebitCardTransactions
+      parameters:
+        - name: id
+          in: path
+          description: ID of account to retrieve transactions
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TransactionResponse'
+        "404":
+          description: Sufficient balanceDebit card not found
+components:
+  schemas:
+    DebitCard:
+      required:
+        - cardNumber
+        - customerId
+        - primaryAccountId
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        cardNumber:
+          type: string
+          description: Debit card number
+          example: "1234-5678-9876-5432"
+        customerId:
+          type: string
+          description: ID of the customer who owns the debit card
+        primaryAccountId:
+          type: string
+          description: ID of the primary account linked to the debit card
+        linkedAccountIds:
+          type: array
+          items:
+            type: string
+          description: List of IDs of accounts linked to the debit card
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation date
+          readOnly: true
+      xml:
+        name: debitCard
+    TransactionResponse:
+      type: object
+      required:
+        - debitCardNumber
+        - amount
+        - date
+        - type
+        - description
+      properties:
+        id:
+          type: string
+          readOnly: true
+        accountTransactionId:
+          type: string
+          description: ID of the transaction of Account
+        debitCardNumber:
+          type: string
+          description: ID of the account associated with the transaction
+        amount:
+          type: number
+          format: double
+          description: Amount of the transaction
+        date:
+          type: string
+          format: date-time
+          description: Date and time of the transaction
+        type:
+          type: string
+          description: Type of the transaction (deposit, withdrawal)
+        description:
+          type: string
+          description: Description of the transaction
+      xml:
+        name: transaction
+    TransactionOperation:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: double
+          description: Amount of transaction
+        description:
+          type: string
+          description: The Description
+      xml:
+        name: transactionOperation
+    AccountBalance:
+      type: object
+      properties:
+        id:
+          type: string
+          description: id
+        balance:
+          type: number
+          format: double
+          description: Balance account
+        accountType:
+          type: string
+          description: Account Type
+        accountUsageType:
+          type: string
+          description: Account Usage Type
+      xml:
+        name: accountBalance
+  requestBodies:
+    debitCard:
+      description: Debit card object that needs to be added to the database
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DebitCard'
