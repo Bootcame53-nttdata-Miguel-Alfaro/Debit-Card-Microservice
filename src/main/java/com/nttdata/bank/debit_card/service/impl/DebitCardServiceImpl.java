@@ -91,7 +91,7 @@ public class DebitCardServiceImpl implements DebitCardService {
 
     @Override
     public Mono<DebitCard> findById(String cardId) {
-        return debitCardRepository.findById(cardId);
+        return debitCardRepository.findByCardNumber(cardId);
     }
 
     @Override
