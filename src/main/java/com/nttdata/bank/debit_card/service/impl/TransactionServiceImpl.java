@@ -138,6 +138,7 @@ public class TransactionServiceImpl implements TransactionService {
                     System.out.println("Error específico: " + e.getMessage());
                     // Crear un mensaje de respuesta de error específico
                     MessageKafka errorMessage = new MessageKafka();
+                    errorMessage.setCorrelationId(correlationId);
                     errorMessage.setStatus(false);
                     errorMessage.setMessage("Card not found or insufficient balance");
                     try {
