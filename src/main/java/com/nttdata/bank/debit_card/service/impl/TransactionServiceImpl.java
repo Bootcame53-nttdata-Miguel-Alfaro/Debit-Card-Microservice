@@ -66,6 +66,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .flatMapMany(debitCard -> Flux.fromIterable(debitCard.getLinkedAccountIds()))
                 .concatMap(accountId -> cachedOperation.flatMap(op -> validateAndWithdraw(accountId, cardNumber, op))
                         .onErrorResume(e -> {
+                            System.out.println("More detail" + accountId + " : " + cardNumber);
                             System.out.println("Attempt failed for account " + accountId + ": " + e.getMessage());
                             return Mono.empty();
                         }))
@@ -75,6 +76,7 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     private Mono<Transaction> validateAndWithdraw(String accountId, String cardNumber, Operation operation) {
+        System.out.println("More detail validate" + operation.getAmount() + " : " + operation.getDescription());
         return accountService.validateBalance(accountId, new ValidateRequest("withdraw", operation.getAmount()))
                 .flatMap(validateResponse -> {
                     if (validateResponse.getSufficientBalance()) {
