@@ -1,10 +1,14 @@
 package com.nttdata.bank.debit_card.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nttdata.bank.debit_card.domain.Account;
 import com.nttdata.bank.debit_card.domain.DebitCard;
+import com.nttdata.bank.debit_card.domain.MessageKafka;
 import com.nttdata.bank.debit_card.repository.DebitCardRepository;
 import com.nttdata.bank.debit_card.service.AccountService;
 import com.nttdata.bank.debit_card.service.DebitCardService;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -15,10 +19,17 @@ public class DebitCardServiceImpl implements DebitCardService {
 
     private final DebitCardRepository debitCardRepository;
     private final AccountService accountService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public DebitCardServiceImpl(DebitCardRepository debitCardRepository, AccountService accountService) {
+    private static final String REQUEST_TOPIC = "card_validation_request";
+    private static final String RESPONSE_TOPIC = "card_validation_response";
+
+    public DebitCardServiceImpl(DebitCardRepository debitCardRepository, AccountService accountService,
+                                KafkaTemplate<String, String> kafkaTemplate) {
         this.debitCardRepository = debitCardRepository;
         this.accountService = accountService;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     @Override
@@ -105,5 +116,44 @@ public class DebitCardServiceImpl implements DebitCardService {
         return debitCardRepository.findByCardNumber(cardNumber)
                 .switchIfEmpty(Mono.error(new RuntimeException("Debit card not found")))
                 .flatMap(c -> accountService.findMainAccountBalance(c.getPrimaryAccountId()));
+    }
+
+    @KafkaListener(topics = REQUEST_TOPIC, groupId = "debit_card_service_group")
+    public void listen(String messageJson) {
+        System.out.println("Solicitud recibida de Kafka: " + messageJson);
+
+        MessageKafka message;
+        try {
+            message = objectMapper.readValue(messageJson, MessageKafka.class);
+        } catch (Exception e) {
+            System.out.println("Fallo");
+            throw new RuntimeException("Error deserializing MessageKafka", e);
+        }
+
+        String cardNumber = message.getInformation();
+        String correlationId = message.getCorrelationId();
+
+        System.out.println("Buscando tarjeta con número: " + cardNumber);
+
+        debitCardRepository.findAllByCardNumber(cardNumber)
+                .hasElements()
+                .map(exists -> {
+                    MessageKafka responseMessage = new MessageKafka();
+                    responseMessage.setStatus(exists);
+                    responseMessage.setCorrelationId(correlationId);
+                    return responseMessage;
+                })
+                .flatMap(responseMessage -> {
+                    try {
+                        String responseMessageJson = objectMapper.writeValueAsString(responseMessage);
+                        System.out.println("Enviando respuesta a Kafka: " + responseMessageJson);
+                        return Mono.fromCallable(() -> kafkaTemplate.send(RESPONSE_TOPIC, responseMessageJson));
+                    } catch (Exception e) {
+                        return Mono.error(new RuntimeException("Error serializing MessageKafka", e));
+                    }
+                })
+                .doOnError(e -> System.out.println("Error durante el procesamiento: " + e.getMessage()))
+                .doOnSuccess(response -> System.out.println("Mensaje enviado a Kafka exitosamente."))
+                .subscribe();
     }
 }

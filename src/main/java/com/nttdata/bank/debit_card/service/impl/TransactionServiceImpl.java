@@ -1,5 +1,7 @@
 package com.nttdata.bank.debit_card.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nttdata.bank.debit_card.domain.MessageKafka;
 import com.nttdata.bank.debit_card.domain.Operation;
 import com.nttdata.bank.debit_card.domain.Transaction;
 import com.nttdata.bank.debit_card.domain.ValidateRequest;
@@ -7,6 +9,8 @@ import com.nttdata.bank.debit_card.repository.DebitCardRepository;
 import com.nttdata.bank.debit_card.repository.TransactionRepository;
 import com.nttdata.bank.debit_card.service.AccountService;
 import com.nttdata.bank.debit_card.service.TransactionService;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -19,11 +23,17 @@ public class TransactionServiceImpl implements TransactionService {
     private final TransactionRepository transactionRepository;
     private final DebitCardRepository debitCardRepository;
     private final AccountService accountService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public TransactionServiceImpl(TransactionRepository transactionRepository, DebitCardRepository debitCardRepository, AccountService accountService) {
+    private static final String REQUEST_TOPIC_WITHDRAW = "transaction_withdraw_request";
+    private static final String RESPONSE_TOPIC_WITHDRAW = "transaction_withdraw_response";
+
+    public TransactionServiceImpl(TransactionRepository transactionRepository, DebitCardRepository debitCardRepository, AccountService accountService, KafkaTemplate<String, String> kafkaTemplate) {
         this.transactionRepository = transactionRepository;
         this.debitCardRepository = debitCardRepository;
         this.accountService = accountService;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     @Override
@@ -94,5 +104,51 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     public Flux<Transaction> getTransactions(String debitCardNumber) {
         return transactionRepository.findByDebitCardNumber(debitCardNumber);
+    }
+
+    @KafkaListener(topics = REQUEST_TOPIC_WITHDRAW, groupId = "debit_card_service_group")
+    public void listen_withdraw(String messageJson) {
+        System.out.println("Solicitud recibida de Kafka: " + messageJson);
+        MessageKafka message;
+        try {
+            message = objectMapper.readValue(messageJson, MessageKafka.class);
+        } catch (Exception e) {
+            System.out.println("Fallo");
+            throw new RuntimeException("Error deserializing MessageKafka", e);
+        }
+        String cardNumber = message.getInformation();
+        Double cardValue = message.getValue();
+        String correlationId = message.getCorrelationId();
+        System.out.println("Buscando tarjeta con número: " + cardNumber);
+        withdraw(cardNumber, Mono.just(new Operation(cardValue, "Automatic wallet withdraw")))
+                .flatMap(response -> {
+                    MessageKafka responseMessage = new MessageKafka();
+                    responseMessage.setCorrelationId(correlationId);
+                    try {
+                        responseMessage.setInformation(response.getId());
+                        responseMessage.setStatus(true);
+                        String responseMessageJson = objectMapper.writeValueAsString(responseMessage);
+                        System.out.println("Enviando respuesta a Kafka: " + responseMessageJson);
+                        return Mono.fromCallable(() -> kafkaTemplate.send(RESPONSE_TOPIC_WITHDRAW, responseMessageJson));
+                    } catch (Exception e) {
+                        return Mono.error(new RuntimeException("Error serializing MessageKafka", e));
+                    }
+                })
+                .onErrorResume(e -> {
+                    System.out.println("Error específico: " + e.getMessage());
+                    // Crear un mensaje de respuesta de error específico
+                    MessageKafka errorMessage = new MessageKafka();
+                    errorMessage.setStatus(false);
+                    errorMessage.setMessage("Card not found or insufficient balance");
+                    try {
+                        String errorMessageJson = objectMapper.writeValueAsString(errorMessage);
+                        System.out.println("Enviando respuesta de error a Kafka: " + errorMessageJson);
+                        return Mono.fromCallable(() -> kafkaTemplate.send(RESPONSE_TOPIC_WITHDRAW, errorMessageJson)); // Indicar que hubo un error
+                    } catch (Exception ex) {
+                        return Mono.error(new RuntimeException("Error serializing error message", ex));
+                    }
+                })
+                .doOnSuccess(response -> System.out.println("Mensaje enviado a Kafka exitosamente."))
+                .subscribe();
     }
 }

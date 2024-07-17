@@ -10,4 +10,8 @@ import lombok.Setter;
 public class Operation {
     private Double amount;
     private String description;
+    public Operation(Double amount, String description){
+        this.amount = amount;
+        this.description = description;
+    }
 }
